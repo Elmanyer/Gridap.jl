@@ -8,6 +8,7 @@ LocalPreferences.toml
 Manifest.toml
 tmp/
 .vscode/
+tenpro_test/
 
 CLAUDE.md
 GEMINI.md
