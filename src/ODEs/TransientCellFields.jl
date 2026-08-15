@@ -122,6 +122,35 @@ function TransientMultiFieldCellField(fields::MultiFieldTypes, derivatives::Tupl
   TransientMultiFieldCellField(fields, derivatives, _flat)
 end
 
+# Accept a Tuple of transient single fields and normalise it to the Vector the
+# struct declares.
+#
+# WHY THIS IS NEEDED. `time_derivative(::TransientMultiFieldCellField)` below builds its
+# third argument with `map(cellfield, derivatives...)`. `map` returns a Tuple when its
+# input is a Tuple and a Vector when the input is an array-like MultiField container, so
+# the third argument is only sometimes a Vector — while the struct field is declared
+# `transient_single_fields::Vector{<:TransientCellField}`. When it comes out a Tuple,
+# construction fails with
+#   MethodError: no method matching TransientMultiFieldCellField(::Tuple, ::Tuple, ::Tuple)
+#
+# This is exactly what breaks AUTOMATIC DIFFERENTIATION of transient multifield residuals:
+# the hand-Jacobian path passes a MultiFieldFEFunction (array-like ⇒ Vector ⇒ fine),
+# whereas the AD path passes a plain Tuple of single fields ⇒ Tuple ⇒ MethodError. Note the
+# failure has nothing to do with ForwardDiff.Dual — no Dual appears in the error — it is a
+# Tuple-vs-Vector type instability in `time_derivative`.
+#
+# Fixing it here (an additive outer constructor) rather than in `time_derivative` keeps the
+# change strictly widening: no existing call site changes behaviour, since every current
+# caller already passes a Vector.
+function TransientMultiFieldCellField(
+  cellfield, derivatives::Tuple, transient_single_fields::Tuple
+)
+  TransientMultiFieldCellField(
+    cellfield, derivatives,
+    collect(TransientCellField, transient_single_fields)
+  )
+end
+
 # Default constructors
 function TransientCellField(fields::MultiFieldTypes, derivatives::Tuple)
   TransientMultiFieldCellField(fields, derivatives)
