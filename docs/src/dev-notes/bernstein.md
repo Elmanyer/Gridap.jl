@@ -37,7 +37,8 @@ we have ``∂_{x_i} λ_j(\bm{x}) = M_{j,i+1}``, so
 ```
 The matrix ``M`` is all we need that depends on ``T`` in order to compute
 Bernstein polynomials and their derivatives, it is stored in the field
-`x_to_λ` of [`BernsteinBasisOnSimplex`](@ref).
+`cart_to_bary_matrix` of [`BernsteinBasisOnSimplex`](@ref), when ``T`` is not
+the reference simplex.
 
 On the reference simplex defined by the vertices `get_vertex_coordinates(SEGMENT / TRI / TET⋯)`:
 ```math
@@ -48,7 +49,7 @@ v_2     & = (0\ 1\ ⋯\ 0), \\
 v_N     & = (0\ ⋯\ 0\ 1),
 \end{aligned}
 ```
-the matrix ``M`` reduces to
+the matrix ``M`` is not stored because
 ```math
 λ(\bm{x}) = \Big(1-∑_{1≤ i≤ D} x_i, x_1, x_2, ⋯, x_D\Big)
 \quad\text{and}\quad
@@ -138,7 +139,9 @@ the gradient and hessian compute the ``B_β`` using
 `_downwards_de_Casteljau_nD!` up to order ``K-1`` and ``K-2`` respectively, and
 then the results are assembled by `_grad_Bα_from_Bαm!` and
 `_hess_Bα_from_Bαmm!` respectively. The implementation makes sure to only
-access each relevant ``B_β`` once per ``(∇/H)B_α`` computed.
+access each relevant ``B_β`` once per ``(∇/H)B_α`` computed. Also, on the
+reference simplex, the barycentric coordinates derivatives are computed at
+compile time using ``∂_qλ_i = δ_{i q}-δ_{i N}``.
 
 ## Bernstein basis generalization for ``\mathcal{P}Λ`` spaces
 
@@ -489,11 +492,8 @@ In the reference simplex ``\hat{T}``, the vertices and thus coefficients of
 ``ψ_I^{α,J}`` in ``\hat{T}``, denoted by ``\hat{m}_I^J`` and
 ``\hat{ψ}_I^{α,J}`` respectively, could be hard-coded at compile time in
 `@generated` functions to avoid storing them in the basis and accessing them at
-runtime.
+runtime. Let us derive the formulas for them.
 
-In the following, analytical formulas are derived for them. They are
-implemented and used in tests to validate the numerical computation of the
-coefficients.
 
 ##### Coefficients ``\hat{m}_I^J``
 

@@ -228,35 +228,38 @@ end
 ###################################################
 
 """
-    BernsteinBasisOnSimplex{D,V,K} <: PolynomialBasis{D,V,Bernstein}
+    BernsteinBasisOnSimplex{D,V,M} <: PolynomialBasis{D,V,Bernstein}
 
-Type for the multivariate Bernstein basis of order `K` in barycentric
-coordinates, c.f. [Bernstein polynomials](@ref) section of the documentation.
-If `V` is not scalar, a duplication and direct sum of the scalar Bernstein
-basis is made for each independent component of `V`, yielding a basis of the
-Cartesian product space.
+Type for the multivariate Bernstein basis in barycentric coordinates,
+c.f. [Bernstein polynomials](@ref) section of the documentation. If `V` is not
+scalar, a duplication and direct sum of the scalar Bernstein basis is made for each
+independent component of `V`, yielding a basis of the Cartesian product space.
 
 The index of `B_α` in the basis is [`bernstein_term_id(α)`](@ref bernstein_term_id).
 
-# Fields
-- `x_to_λ::Matrix` the (D+1)×(D+1) change of coordinates matrix from cartesian to barycentric coordinates
+`M` is Nothing for the reference tetrahedra barycentric coordinates or
+`SMatrix{D+1,D+1}` if some simplex (triangle, tetrahedra, ...) vertices
+coordinates are given.
 """
-struct BernsteinBasisOnSimplex{D,V,K} <: PolynomialBasis{D,V,Bernstein}
-  x_to_λ::Matrix{Float64} # Hard-code Float64 as long as extrusion polytopes do it
+struct BernsteinBasisOnSimplex{D,V,M,K} <: PolynomialBasis{D,V,Bernstein}
+  cart_to_bary_matrix::M #  Nothing or SMatrix{D+1,D+1}
 
-  function BernsteinBasisOnSimplex{D}(::Type{V}, order::Int, vertices) where {D,V}
+  function BernsteinBasisOnSimplex{D}(::Type{V},order::Int,vertices=nothing) where {D,V}
     _simplex_vertices_checks(Val(D), vertices)
 
     VV = make_concretetype(V)
-    x_to_λ = _compute_cart_to_bary_matrix(vertices, Val(D+1))
+    cart_to_bary_matrix = _compute_cart_to_bary_matrix(vertices, Val(D+1))
+    M = typeof(cart_to_bary_matrix) # Nothing or SMatrix
     K = order
-    new{D,VV,K}(x_to_λ)
+    new{D,VV,M,K}(cart_to_bary_matrix)
   end
 end
 
 function _simplex_vertices_checks(::Val{D}, vertices) where D
-  @check length(vertices) == D+1 "$D+1 vertices are required to define a $D-dim simplex, got $(length(vertices))"
-  @check eltype(vertices) <: Point{D} "Vertices should be of type <:Point{$D}, got $(eltype(vertices))"
+  if !isnothing(vertices)
+    @check length(vertices) == D+1 "$D+1 vertices are required to define a $D-dim simplex, got $(length(vertices))"
+    @check eltype(vertices) <: Point{D} "Vertices should be of type <:Point{$D}, got $(eltype(vertices))"
+  end
 end
 
 """
@@ -267,34 +270,26 @@ Constructors for [`BernsteinBasisOnSimplex`](@ref).
 
 If specified, `vertices` is a collection of `D+1` `Point{D}` defining a simplex
 used to compute the barycentric coordinates from, it must be non-degenerated
-(have nonzero volume). Otherwise, the coordinates of the reference simplex
-(`ExtrusionPolytope`) are used.
+(have nonzero volume).
 """
-function BernsteinBasisOnSimplex(::Val{D}, ::Type{V}, order::Int) where {D,V}
-  BernsteinBasisOnSimplex{D}(V,order)
-end
-
-function BernsteinBasisOnSimplex(::Val{D}, ::Type{V}, order::Int, vertices) where {D,V}
+function BernsteinBasisOnSimplex(::Val{D},::Type{V},order::Int,vertices=nothing) where {D,V}
   BernsteinBasisOnSimplex{D}(V,order,vertices)
 end
-
-function BernsteinBasisOnSimplex{D}(::Type{V}, order::Int) where {D,V}
-  Pt = Point{D,Float64}
-  vertices = ntuple( j -> Pt( ntuple( i -> j==i+1, Val(D)) ), Val(D+1))
-  BernsteinBasisOnSimplex{D}(V,order,vertices)
-end
-
-BernsteinBasisOnSimplex{D}(::Type{V},order::Int,::Nothing) where {D,V} = BernsteinBasisOnSimplex{D}(V,order)
-BernsteinBasisOnSimplex(::Val{D},::Type{V},order::Int,::Nothing) where {D,V} = BernsteinBasisOnSimplex(Val(D),V,order)
 
 Base.size(b::BernsteinBasisOnSimplex{D,V}) where {D,V} = (num_indep_components(V)*binomial(D+get_order(b),D),)
-get_order(::BernsteinBasisOnSimplex{D,V,K}) where {D,V,K} = K
+get_order(::BernsteinBasisOnSimplex{D,V,M,K}) where {D,V,M,K} = K
 get_orders(b::BernsteinBasisOnSimplex{D}) where D = tfill(get_order(b), Val(D))
 
-_get_parameters(::BernsteinBasisOnSimplex{D,V,K}) where {D,V,K} = Val(K)
+_get_parameters(::BernsteinBasisOnSimplex{D,V,M,K}) where {D,V,M,K} = Val(K)
 
-function testvalue(::Type{BernsteinBasisOnSimplex{D,V,K}}) where {D,V,K}
-  BernsteinBasisOnSimplex{D}(V,K)
+function testvalue(::Type{BernsteinBasisOnSimplex{D,V,M,K}}) where {D,V,M,K}
+  if M == Nothing
+    vertices = nothing
+  else
+    Pt = Point{D,eltype(M)}
+    vertices = ntuple( j -> Pt( ntuple( i -> j==i+1, Val(D)) ), Val(D+1))
+  end
+  BernsteinBasisOnSimplex{D}(V,K,vertices)
 end
 
 
@@ -304,11 +299,11 @@ end
 
 """
     _compute_cart_to_bary_matrix(vertices, ::Val{N})
+    _compute_cart_to_bary_matrix(::Nothing,::Val) = nothing
 
-For the given vertices of a `D`-simplex (`D` = `N`-1), computes the change
+For the given the vertices of a `D`-simplex (`D` = `N`-1), computes the change
 of coordinate matrix `x_to_λ` from cartesian to barycentric, such that
-`λ` = `x_to_λ` * `x_padded` with `sum(λ) == 1` and `x_padded == sum(λ .* vertices)`,
-and where `x_padded` is `Point(1, x...)` for any given Cartesian coordinates `x`.
+`λ` = `x_to_λ` * `x` with `sum(λ) == 1` and `x == sum(λ .* vertices)`.
 """
 function _compute_cart_to_bary_matrix(vertices, ::Val{N}) where N
   T = eltype(eltype(vertices))
@@ -321,7 +316,19 @@ function _compute_cart_to_bary_matrix(vertices, ::Val{N}) where N
   msg =  "The simplex defined by the given vertices is degenerated (is flat / has zero volume)."
   !all(isfinite, x_to_λ) && throw(DomainError(vertices,msg))
 
-  return Matrix{Float64}(x_to_λ)
+  return SMatrix{N,N,T}(x_to_λ)
+end
+_compute_cart_to_bary_matrix(::Nothing, ::Val) = nothing
+
+"""
+    _cart_to_bary(x::Point{D,T}, ::Nothing)
+
+Compute the barycentric coordinates with respect to the reference simplex of the
+given cartesian coordinates `x`, that is `λ`=(x1, ..., xD, 1-x1-x2-...-xD).
+"""
+@inline function _cart_to_bary(x::Point{D,T}, ::Nothing) where {D,T}
+  sum_x = sum(x,init=zero(T))
+  return SVector(1-sum_x, x...)
 end
 
 """
@@ -331,10 +338,8 @@ Compute the barycentric coordinates of the given cartesian coordinates `x` using
 the `x_to_λ` change of coordinate matrix, see [`_compute_cart_to_bary_matrix`](@ref).
 """
 @inline function _cart_to_bary(x::Point{D,T}, x_to_λ) where {D,T}
-  N = D+1
-  sx_to_λ = SizedMatrix{N,N,T}(x_to_λ)
-  x_1 = SVector{N,T}(one(T), x...)
-  return sx_to_λ*x_1
+  x_1 = SVector{D+1,T}(one(T), x...)
+  return x_to_λ*x_1
 end
 
 """
@@ -498,7 +503,7 @@ function _evaluate_nd!(
   r::AbstractMatrix, i,
   c::AbstractVector{T}, VK::Val) where {D,V,T}
 
-  λ = _cart_to_bary(x, b.x_to_λ)
+  λ = _cart_to_bary(x, b.cart_to_bary_matrix)
   c[1] = one(T)
   _downwards_de_Casteljau_nD!(c,λ,VK,Val(D))
 
@@ -515,7 +520,7 @@ function _gradient_nd!(
   g::Nothing,
   s::MVector{D,T}, ::Val{K}) where {D,V,G,T,K}
 
-  x_to_λ = b.x_to_λ
+  x_to_λ = b.cart_to_bary_matrix
   λ = _cart_to_bary(x, x_to_λ)
 
   c[1] = one(T)
@@ -532,7 +537,7 @@ function _hessian_nd!(
   h::Nothing,
   s::MMatrix{D,D,T}, ::Val{K}) where {D,V,G,T,K}
 
-  x_to_λ = b.x_to_λ
+  x_to_λ = b.cart_to_bary_matrix
   λ = _cart_to_bary(x, x_to_λ)
 
   c[1] = one(T)
@@ -551,7 +556,7 @@ coefficients.
 If `K0 = 1`, `λ` are the barycentric coordinates of some point `x` and `c[1] = 1`,
 this computes all order `K` basis Bernstein polynomials at `x`:
 
-`c[α_id] == B_α(x)  ∀α ∈ bernstein_terms(K,D)`
+`c[α_id] = B_α(x)  ∀α ∈ bernstein_terms(K,D)`
 
 where `α_id` = [`bernstein_term_id`](@ref)(α).
 """
@@ -634,7 +639,7 @@ end
 # ∂q(B_α) = K ∑_{1 ≤ i ≤ N} ∂q(λi) B_β
 # for  1 ≤ q ≤ D and β = α-ei
 @generated function _grad_Bα_from_Bαm!(
-    r,i,c,s,::Val{K},::Val{D},::Type{V},x_to_λ) where {K,D,V}
+    r,i,c,s,::Val{K},::Val{D},::Type{V},x_to_λ=nothing) where {K,D,V}
 
   ex_v = Vector{Expr}()
   ncomp = num_indep_components(V)
@@ -650,10 +655,15 @@ end
       push!(ex_v, :(@inbounds B_β = c[$id_β]))
       # s[q] = Σ_β ∂q(λi) B_β
       for q in 1:D
-        # ∂q(λi) = ei (x_to_λ*(e1 - e{q+1}) - x_to_λ*(e1)) = ei * x_to_λ * e{q+1}
-        # ∂q(λi) = x_to_λ[i,q+1]
-        push!(ex_v, :(@inbounds s[$q] += x_to_λ[$i,$(q+1)]*B_β))
-        # On reference simplex, ∂q(λi) would be δ_{q+1,i} - δ_1i
+        if x_to_λ == Nothing
+          # ∇λ(eq)_i = δ_{q+1,i} - δ_1i
+          Cqi = δ(i,q+1) - δ(1,i)
+          iszero(Cqi) || push!(ex_v, :(@inbounds s[$q] += $Cqi*B_β))
+        else
+          # ∂q(λi) = ei (x_to_λ*(e1 - e{q+1}) - x_to_λ*(e1)) = ei * x_to_λ * e{q+1}
+          # ∂q(λi) = x_to_λ[i,q+1]
+          push!(ex_v, :(@inbounds s[$q] += x_to_λ[$i,$(q+1)]*B_β))
+        end
       end
     end
     push!(ex_v, :(@inbounds s .*= $K)) # s = Ks.
@@ -668,7 +678,7 @@ end
 # ∂t(∂q(B_α)) = K(K-1) ∑_{1 ≤ i,j ≤ N} ∂t(λj) ∂q(λi) B_β
 # for  1 ≤ t,q ≤ D and β = α - ei - ej
 @generated function _hess_Bα_from_Bαmm!(
-    r,i,c,s,::Val{K},::Val{D},::Type{V},x_to_λ) where {K,D,V}
+    r,i,c,s,::Val{K},::Val{D},::Type{V},x_to_λ=nothing) where {K,D,V}
 
   ex_v = Vector{Expr}()
   ncomp = num_indep_components(V)
@@ -687,14 +697,16 @@ end
       push!(ex_v, :(@inbounds B_β = c[$id_β]))
       for t in 1:D
         for q in 1:D
-                 push!(ex_v, :(@inbounds C =  x_to_λ[$i,$(q+1)]*x_to_λ[$j,$(t+1)]))
-          i≠j && push!(ex_v, :(@inbounds C += x_to_λ[$j,$(q+1)]*x_to_λ[$i,$(t+1)]))
-                 push!(ex_v, :(@inbounds s[$t,$q] += C*B_β))
-          # On reference simplex, this would be
-          ## s[t,q] = Σ_β B_β (δ_iq - δ_iN)*(δ_jt - δ_jN)
-          #         Cβ  = C(q,t,i,j)
-          #  if i≠j Cβ += C(q,t,j,i) end
-          #  iszero(Cβ) || push!(ex_v, :(@inbounds s[$t,$q] += $Cβ*B_β))
+          if x_to_λ == Nothing
+          # s[t,q] = Σ_β B_β (δ_iq - δ_iN)*(δ_jt - δ_jN)
+                   Cβ  = C(q,t,i,j)
+            if i≠j Cβ += C(q,t,j,i) end
+            iszero(Cβ) || push!(ex_v, :(@inbounds s[$t,$q] += $Cβ*B_β))
+          else
+                   push!(ex_v, :(@inbounds C =  x_to_λ[$i,$(q+1)]*x_to_λ[$j,$(t+1)]))
+            if i≠j push!(ex_v, :(@inbounds C += x_to_λ[$j,$(q+1)]*x_to_λ[$i,$(t+1)])) end
+            push!(ex_v, :(@inbounds s[$t,$q] += C*B_β))
+          end
         end
       end
     end

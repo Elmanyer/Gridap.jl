@@ -204,13 +204,7 @@ end
 
 function testvalue(::Type{LinearCombinationField{V,F}}) where {V,F}
   fields = testvalue(F)
-  values = if V <: Diagonal
-    Diagonal(zeros(eltype(V), length(fields)))
-  elseif V <: AbstractVector
-    zeros(eltype(V), length(fields))
-  else
-    zeros(eltype(V), length(fields), 0)
-  end::V
+  values = zeros(eltype(V), length(fields), 0)
   LinearCombinationField(values,fields,1)
 end
 

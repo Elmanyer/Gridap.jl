@@ -19,8 +19,8 @@ const DiracDelta{D} = GenericDiracDelta{D,D,IsGridEntity}
     DiracDelta{0}(model::DiscreteModel, labeling::FaceLabeling; tags)
     DiracDelta{D}(model::DiscreteModel, face_to_bgface::AbstractVector{<:Integer}, degree)
     DiracDelta{D}(model::DiscreteModel, bgface_to_mask::AbstractVector{Bool}, degree)
-    DiracDelta(   model::DiscreteModel{D}, p::Point{D,T}; searchmethod=KDTreeSearch())
-    DiracDelta(   model::DiscreteModel{D}, pvec::Vector{Point{D,T}}; searchmethod=KDTreeSearch())
+    DiracDelta(   model::DiscreteModel{D}, p::Point{D,T})
+    DiracDelta(   model::DiscreteModel{D}, pvec::Vector{Point{D,T}})
 
 where `degree` isa `Integer`.
 """
@@ -99,8 +99,8 @@ end
 
 # For handling DiracDelta at a generic Point in the domain #
 
-function _cell_to_pindices(pvec::Vector{<:Point},trian::Triangulation,searchmethod=KDTreeSearch())
-  cache = _point_to_cell_cache(searchmethod,trian)
+function _cell_to_pindices(pvec::Vector{<:Point},trian::Triangulation)
+  cache = _point_to_cell_cache(KDTreeSearch(),trian)
   cell_to_pindex = Dict{Int, Vector{Int32}}()
   for i in 1:length(pvec)
     cell = _point_to_cell!(cache, pvec[i])
@@ -109,9 +109,9 @@ function _cell_to_pindices(pvec::Vector{<:Point},trian::Triangulation,searchmeth
   cell_to_pindex
 end
 
-function DiracDelta(model::DiscreteModel{D}, p::Point{D,T}; searchmethod=KDTreeSearch()) where {D,T}
+function DiracDelta(model::DiscreteModel{D}, p::Point{D,T}) where {D,T}
   trian = Triangulation(model)
-  cache = _point_to_cell_cache(searchmethod,trian)
+  cache = _point_to_cell_cache(KDTreeSearch(),trian)
   cell = _point_to_cell!(cache, p)
   trianv = view(trian,[cell])
   point = [p]
@@ -121,9 +121,9 @@ function DiracDelta(model::DiscreteModel{D}, p::Point{D,T}; searchmethod=KDTreeS
   GenericDiracDelta{0,D,NotGridEntity}(trianv,pmeas)
 end
 
-function DiracDelta(model::DiscreteModel{D}, pvec::Vector{Point{D,T}}; searchmethod=KDTreeSearch()) where {D,T}
+function DiracDelta(model::DiscreteModel{D}, pvec::Vector{Point{D,T}}) where {D,T}
   trian = Triangulation(model)
-  cell_to_pindices = _cell_to_pindices(pvec,trian,searchmethod)
+  cell_to_pindices = _cell_to_pindices(pvec,trian)
   cell_ids = collect(keys(cell_to_pindices))
   cell_points = collect(values(cell_to_pindices))
   points = map(i->pvec[cell_points[i]], 1:length(cell_ids))
@@ -135,8 +135,8 @@ function DiracDelta(model::DiscreteModel{D}, pvec::Vector{Point{D,T}}; searchmet
 end
 
 
-function DiracDelta(trian::Triangulation{Dt}, pvec::Vector{Point{D,T}}; searchmethod=KDTreeSearch()) where {Dt,D,T}
-  cell_to_pindices = _cell_to_pindices(pvec,trian,searchmethod)
+function DiracDelta(trian::Triangulation{Dt}, pvec::Vector{Point{D,T}}) where {Dt,D,T}
+  cell_to_pindices = _cell_to_pindices(pvec,trian)
   cell_ids = collect(keys(cell_to_pindices))
   cell_points = collect(values(cell_to_pindices))
   points = map(i->pvec[cell_points[i]], 1:length(cell_ids))
@@ -148,8 +148,8 @@ function DiracDelta(trian::Triangulation{Dt}, pvec::Vector{Point{D,T}}; searchme
 end
 
 
-function DiracDelta(trian::Triangulation{Dt}, p::Point{D,T}; searchmethod=KDTreeSearch()) where {Dt,D,T}
-  cache = _point_to_cell_cache(searchmethod,trian)
+function DiracDelta(trian::Triangulation{Dt}, p::Point{D,T}) where {Dt,D,T}    
+  cache = _point_to_cell_cache(KDTreeSearch(),trian)
   cell = _point_to_cell!(cache, p)
   trianv = view(trian,[cell])
   point = [p]
