@@ -72,18 +72,13 @@ Fields.∇∇(f::TransientSingleFieldCellField) = ∇∇(f.cellfield)
 # Skeleton-related operations
 function Base.getproperty(f::TransientSingleFieldCellField, sym::Symbol)
   if sym in (:⁺, :plus, :⁻, :minus)
-    derivatives = ()
-    if sym in (:⁺, :plus)
-      cellfield = CellFieldAt{:plus}(f.cellfield)
-      for iderivative in f.derivatives
-        derivatives = (derivatives..., CellFieldAt{:plus}(iderivative))
-      end
-    elseif sym in (:⁻, :minus)
-      cellfield = CellFieldAt{:minus}(f.cellfield)
-      for iderivative in f.derivatives
-        derivatives = (derivatives..., CellFieldAt{:minus}(iderivative))
-      end
-    end
+    # Delegate to the wrapped fields' own `.plus`/`.minus`: for an ordinary `CellField` that is
+    # `CellFieldAt{:plus|:minus}(field)` (unchanged behaviour); for a `SkeletonCellFieldPair`
+    # (automatic differentiation of a skeleton integral) it selects the side that carries the
+    # dual numbers, which wrapping the pair in `CellFieldAt` would hide.
+    side = sym in (:⁺, :plus) ? :plus : :minus
+    cellfield = getproperty(f.cellfield, side)
+    derivatives = map(d -> getproperty(d, side), f.derivatives)
     return TransientSingleFieldCellField(cellfield, derivatives)
   else
     return getfield(f, sym)

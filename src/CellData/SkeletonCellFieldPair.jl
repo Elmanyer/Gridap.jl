@@ -65,6 +65,12 @@ function DomainStyle(a::SkeletonCellFieldPair)
   DomainStyle(getfield(a,:cf_plus))
 end
 
+# Type-level method: wrappers that resolve their domain from a field TYPE (e.g.
+# `TransientSingleFieldCellField`, whose `DomainStyle(::Type)` forwards to its field type) reach
+# this when automatic differentiation substitutes a `SkeletonCellFieldPair` on a skeleton
+# integral. Without it the call falls through to the abstract `DomainStyle(::Type)` stub.
+DomainStyle(::Type{<:SkeletonCellFieldPair{P}}) where P = DomainStyle(P)
+
 function get_triangulation(a::SkeletonCellFieldPair)
   getfield(a,:trian)
 end
